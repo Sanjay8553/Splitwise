@@ -1,0 +1,2 @@
+local-start:
+    ./start.sh

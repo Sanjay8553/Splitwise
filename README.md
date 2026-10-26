@@ -18,16 +18,20 @@ This is a personal ledger. Participants are names in the trip, not separate user
 
 ## Run locally
 
-No Node.js, package manager, backend, or database is required.
+No Node.js, backend, or database is required. The `just` command runner is needed for the shortcut below.
 
 1. Open a terminal in this folder.
-2. Start Python's static file server:
+2. Install [`just`](https://just.systems/) if it is not installed. On macOS with Homebrew, run `brew install just`.
+3. Start the site:
 
    ```sh
-   python3 -m http.server 8000
+   just local-start
    ```
 
-3. Open <http://localhost:8000>.
+4. Open <http://localhost:8000>.
+5. Press **Ctrl+C** in the terminal to stop the server.
+
+The recipe uses Python's built-in static file server. To choose a different port, run `PORT=8080 just local-start` and open <http://localhost:8080>.
 
 The first trip can be created and used locally without connecting Google Drive. Browser data is specific to the browser profile and device.
 
