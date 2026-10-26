@@ -5,6 +5,7 @@ A responsive, personal travel-expense website. There is no application server or
 ## Features in this starter
 
 - Trips, participants, expenses, and settlements
+- Edit or delete expenses; remove or restore trip participants while retaining recorded history
 - Equal, custom-amount, weighted, and item-by-item splits
 - Integer-cent calculations with deterministic remainder allocation
 - Balances remain grouped by currency; the app does not guess exchange rates
@@ -15,6 +16,8 @@ A responsive, personal travel-expense website. There is no application server or
 - Responsive layout and a small offline app-shell cache
 
 This is a personal ledger. Participants are names in the trip, not separate user accounts, and they do not receive live updates.
+
+Trip names, destinations, dates, and base currency can be changed from **Edit trip**; entire trips can be deleted with confirmation. Expenses and settlements can be edited or deleted, and the balances recalculate after changes. People can be managed from the trip header: names can be changed, removing a person with recorded activity keeps their history and balances but removes them from new expenses, and an unused person is deleted outright. Removed participants can be restored.
 
 ## Run locally
 

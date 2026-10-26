@@ -10,10 +10,15 @@ const ui = {
   tripContent: document.querySelector("#trip-content"),
   tripDialog: document.querySelector("#trip-dialog"),
   tripForm: document.querySelector("#trip-form"),
+  tripError: document.querySelector("#trip-error"),
   expenseDialog: document.querySelector("#expense-dialog"),
   expenseForm: document.querySelector("#expense-form"),
   splitFields: document.querySelector("#split-fields"),
   expenseError: document.querySelector("#expense-error"),
+  peopleDialog: document.querySelector("#people-dialog"),
+  peopleForm: document.querySelector("#people-form"),
+  peopleList: document.querySelector("#people-list"),
+  peopleError: document.querySelector("#people-error"),
   settlementDialog: document.querySelector("#settlement-dialog"),
   settlementForm: document.querySelector("#settlement-form"),
   settlementError: document.querySelector("#settlement-error"),
@@ -28,6 +33,9 @@ let driveFile = null;
 let driveBaselineModifiedTime = null;
 let dirty = false;
 let toastTimer = null;
+let editingExpenseId = null;
+let editingTripId = null;
+let editingSettlementId = null;
 
 function makeId() {
   return crypto.randomUUID();
@@ -99,6 +107,22 @@ function pruneExpiredTrips() {
 
 function activeTrip() {
   return data.trips.find((trip) => trip.id === activeTripId) ?? null;
+}
+
+function activePeople(trip) {
+  return trip.people.filter((person) => person.active !== false);
+}
+
+function expensePeople(trip, expense = null) {
+  const allowed = new Set(activePeople(trip).map((person) => person.id));
+  if (expense) {
+    allowed.add(expense.paidBy);
+    for (const personId of Object.keys(expense.shares ?? {})) allowed.add(personId);
+    for (const item of expense.items ?? []) {
+      for (const personId of Object.keys(item.shares ?? {})) allowed.add(personId);
+    }
+  }
+  return trip.people.filter((person) => allowed.has(person.id));
 }
 
 function escapeHtml(value) {
@@ -217,10 +241,14 @@ function renderTrip(trip) {
     ? expenseRows.map((expense) => {
       const payer = trip.people.find((person) => person.id === expense.paidBy)?.name ?? "Unknown";
       const splitCount = Object.keys(expense.shares).length;
-      return `<li class="expense-row">
+      return `<li class="expense-row" data-expense-id="${escapeHtml(expense.id)}">
         <span class="expense-icon" aria-hidden="true">${expense.method === "items" ? "▤" : "↗"}</span>
         <span class="expense-description"><strong>${escapeHtml(expense.description)}</strong><small>Paid by ${escapeHtml(payer)} · ${splitCount} ${splitCount === 1 ? "person" : "people"} · ${escapeHtml(expense.methodLabel)}${expense.items?.length ? ` · ${expense.items.length} items` : ""}</small></span>
         <span class="expense-amount"><strong>${formatMoney(expense.amountCents, expense.currency)}</strong><small>${formatDate(expense.date)}</small></span>
+        <span class="expense-actions">
+          <button class="row-action" type="button" data-action="edit-expense" data-expense-id="${escapeHtml(expense.id)}" aria-label="Edit ${escapeHtml(expense.description)}" title="Edit expense">Edit</button>
+          <button class="row-action row-action-danger" type="button" data-action="delete-expense" data-expense-id="${escapeHtml(expense.id)}" aria-label="Delete ${escapeHtml(expense.description)}" title="Delete expense">Delete</button>
+        </span>
       </li>`;
     }).join("")
     : `<li class="empty-row">No expenses yet. Add your first bill when you’re ready.</li>`;
@@ -231,15 +259,21 @@ function renderTrip(trip) {
       const className = amount > 0 ? "positive" : amount < 0 ? "negative" : "zero";
       return `<span class="${className}">${amount > 0 ? "+" : ""}${formatMoney(amount, currency)}</span>`;
     }).join(" ");
-    return `<li class="balance-row"><span class="balance-name"><span class="avatar">${escapeHtml(person.name.trim().slice(0, 1).toUpperCase())}</span>${escapeHtml(person.name)}</span><span class="balance-amount">${amounts || `<span class="zero">${formatMoney(0, trip.currency)}</span>`}</span></li>`;
+    return `<li class="balance-row"><span class="balance-name"><span class="avatar">${escapeHtml(person.name.trim().slice(0, 1).toUpperCase())}</span>${escapeHtml(person.name)}${person.active === false ? ` <small class="inactive-person">(removed)</small>` : ""}</span><span class="balance-amount">${amounts || `<span class="zero">${formatMoney(0, trip.currency)}</span>`}</span></li>`;
   }).join("");
-  const settlementRows = trip.settlements.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 4).map((settlement) => {
+  const settlementRows = trip.settlements.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((settlement) => {
     const from = trip.people.find((person) => person.id === settlement.from)?.name ?? "Someone";
     const to = trip.people.find((person) => person.id === settlement.to)?.name ?? "someone";
-    return `<li class="settlement-row">${escapeHtml(from)} paid ${escapeHtml(to)} ${formatMoney(settlement.amountCents, settlement.currency)}</li>`;
+    return `<li class="settlement-row">
+      <span>${escapeHtml(from)} paid ${escapeHtml(to)} ${formatMoney(settlement.amountCents, settlement.currency)}</span>
+      <span class="settlement-actions">
+        <button class="row-action" type="button" data-action="edit-settlement" data-settlement-id="${escapeHtml(settlement.id)}">Edit</button>
+        <button class="row-action row-action-danger" type="button" data-action="delete-settlement" data-settlement-id="${escapeHtml(settlement.id)}">Delete</button>
+      </span>
+    </li>`;
   }).join("");
   const formattedDates = `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
-  const participantsLabel = `${trip.people.length} ${trip.people.length === 1 ? "person" : "people"}`;
+  const participantsLabel = `${activePeople(trip).length} ${activePeople(trip).length === 1 ? "person" : "people"}`;
   const currencies = Object.keys(totals).length ? `${Object.keys(totals).length} ${Object.keys(totals).length === 1 ? "currency" : "currencies"}` : "No bills yet";
 
   ui.tripContent.innerHTML = `
@@ -250,7 +284,9 @@ function renderTrip(trip) {
         <div class="trip-meta"><span>◷ ${formattedDates}</span><span>♙ ${participantsLabel}</span><span>◎ ${escapeHtml(trip.currency)} home currency</span></div>
       </div>
       <div class="trip-actions">
-        <button class="button button-quiet" type="button" data-action="add-person">+ Person</button>
+        <button class="button button-quiet" type="button" data-action="edit-trip">Edit trip</button>
+        <button class="button button-quiet button-danger" type="button" data-action="delete-trip">Delete trip</button>
+        <button class="button button-quiet" type="button" data-action="add-person">Manage people</button>
         <button class="button button-quiet" type="button" data-action="add-settlement">Record payment</button>
         <button class="button button-primary" type="button" data-action="add-expense">+ Expense</button>
       </div>
@@ -258,7 +294,7 @@ function renderTrip(trip) {
     <div class="summary-grid">
       <div class="summary-card"><span>Total recorded</span><strong>${totalAmount}</strong><small>${currencies} · saved in each bill’s original currency</small></div>
       <div class="summary-card"><span>Expenses</span><strong>${trip.expenses.length}</strong><small>${trip.settlements.length} settlements recorded</small></div>
-      <div class="summary-card"><span>Participants</span><strong>${trip.people.length}</strong><small>${trip.people.map((person) => escapeHtml(person.name)).join(" · ")}</small></div>
+      <div class="summary-card"><span>Participants</span><strong>${activePeople(trip).length}</strong><small>${activePeople(trip).map((person) => escapeHtml(person.name)).join(" · ") || "Add someone to the trip"}</small></div>
     </div>
     <div class="content-grid">
       <section class="panel" aria-label="Trip expenses">
@@ -281,15 +317,67 @@ function openDialog(dialog) {
   dialog.showModal();
 }
 
+function openNewTripDialog() {
+  editingTripId = null;
+  ui.tripForm.reset();
+  ui.tripError.textContent = "";
+  ui.tripForm.querySelector(".dialog-heading h2").textContent = "New trip";
+  ui.tripForm.querySelector('[type="submit"]').textContent = "Create trip";
+  const peopleField = ui.tripForm.elements.people;
+  peopleField.closest("label").hidden = false;
+  peopleField.required = true;
+  ui.tripForm.elements.startDate.value = new Date().toISOString().slice(0, 10);
+  ui.tripForm.elements.endDate.value = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  openDialog(ui.tripDialog);
+}
+
+function openEditTripDialog() {
+  const trip = activeTrip();
+  if (!trip) return;
+  editingTripId = trip.id;
+  ui.tripForm.reset();
+  ui.tripError.textContent = "";
+  ui.tripForm.querySelector(".dialog-heading h2").textContent = "Edit trip details";
+  ui.tripForm.querySelector('[type="submit"]').textContent = "Save changes";
+  const peopleField = ui.tripForm.elements.people;
+  peopleField.closest("label").hidden = true;
+  peopleField.required = false;
+  ui.tripForm.elements.name.value = trip.name;
+  ui.tripForm.elements.destination.value = trip.destination;
+  ui.tripForm.elements.startDate.value = trip.startDate;
+  ui.tripForm.elements.endDate.value = trip.endDate;
+  ui.tripForm.elements.currency.value = trip.currency;
+  openDialog(ui.tripDialog);
+}
+
+function deleteTrip() {
+  const trip = activeTrip();
+  if (!trip) return;
+  const detailCount = trip.expenses.length + trip.settlements.length;
+  const details = detailCount ? ` This also deletes ${trip.expenses.length} expense(s) and ${trip.settlements.length} settlement(s).` : "";
+  if (!window.confirm(`Delete the trip "${trip.name}"?${details} This cannot be undone.`)) return;
+  data.trips = data.trips.filter((entry) => entry.id !== trip.id);
+  activeTripId = data.trips[0]?.id ?? null;
+  saveLocalData();
+  render();
+  showToast("Trip deleted from this device. Sync Google Drive to apply the deletion there too.");
+}
+
 function addParticipant(trip, name) {
   const normalized = name.trim();
-  if (!normalized || trip.people.some((person) => person.name.toLowerCase() === normalized.toLowerCase())) return false;
+  if (!normalized) return false;
+  const existing = trip.people.find((person) => person.name.toLowerCase() === normalized.toLowerCase());
+  if (existing) {
+    if (existing.active !== false) return false;
+    existing.active = true;
+    return true;
+  }
   trip.people.push({ id: makeId(), name: normalized });
   return true;
 }
 
-function renderParticipantChecks(trip, prefix, selectedIds = trip.people.map((person) => person.id)) {
-  return `<div class="participant-checks">${trip.people.map((person) => `
+function renderParticipantChecks(trip, prefix, selectedIds = activePeople(trip).map((person) => person.id), participants = activePeople(trip)) {
+  return `<div class="participant-checks">${participants.map((person) => `
     <label class="participant-chip"><input type="checkbox" name="${prefix}" value="${escapeHtml(person.id)}" ${selectedIds.includes(person.id) ? "checked" : ""} />${escapeHtml(person.name)}</label>`).join("")}</div>`;
 }
 
@@ -297,11 +385,12 @@ function selectedParticipantIds(prefix) {
   return [...document.querySelectorAll(`input[name="${prefix}"]:checked`)].map((input) => input.value);
 }
 
-function buildSplitFields() {
-  const trip = activeTrip();
+function buildSplitFields(trip, expense = null) {
   if (!trip) return;
   const method = ui.expenseForm.elements.method.value;
   const currency = ui.expenseForm.elements.currency.value;
+  const participants = expensePeople(trip, expense);
+  const selectedIds = expense ? Object.keys(expense.shares ?? {}) : activePeople(trip).map((person) => person.id);
   const amountInput = ui.expenseForm.elements.amount;
   amountInput.readOnly = method === "items";
   amountInput.required = method !== "items";
@@ -309,43 +398,79 @@ function buildSplitFields() {
   amountInput.classList.toggle("is-readonly", method === "items");
 
   if (method === "equal") {
-    ui.splitFields.innerHTML = `<span class="eyebrow">Split between</span>${renderParticipantChecks(trip, "split-person")}`;
+    ui.splitFields.innerHTML = `<span class="eyebrow">Split between</span>${renderParticipantChecks(trip, "split-person", selectedIds, participants)}`;
   } else if (method === "custom") {
-    ui.splitFields.innerHTML = `<span class="eyebrow">Share amounts (${escapeHtml(currency)})</span>${trip.people.map((person) => `
-      <label class="split-person"><span>${escapeHtml(person.name)}</span><input name="custom-${escapeHtml(person.id)}" type="number" inputmode="decimal" min="0" step="${CURRENCY_DIGITS.has(currency) ? "1" : "0.01"}" placeholder="0" /></label>`).join("")}`;
+    ui.splitFields.innerHTML = `<span class="eyebrow">Share amounts (${escapeHtml(currency)})</span>${participants.map((person) => `
+      <label class="split-person"><span>${escapeHtml(person.name)}</span><input name="custom-${escapeHtml(person.id)}" type="number" inputmode="decimal" min="0" step="${CURRENCY_DIGITS.has(currency) ? "1" : "0.01"}" placeholder="0" value="${expense?.shares?.[person.id] ? centsToInput(expense.shares[person.id], currency) : ""}" /></label>`).join("")}`;
   } else if (method === "weighted") {
-    ui.splitFields.innerHTML = `<span class="eyebrow">Share weights (e.g. 2 = twice the share)</span>${trip.people.map((person) => `
-      <label class="split-person"><span>${escapeHtml(person.name)}</span><input name="weight-${escapeHtml(person.id)}" type="number" inputmode="decimal" min="0" step="0.1" value="1" /></label>`).join("")}`;
+    ui.splitFields.innerHTML = `<span class="eyebrow">Share weights (e.g. 2 = twice the share)</span>${participants.map((person) => `
+      <label class="split-person"><span>${escapeHtml(person.name)}</span><input name="weight-${escapeHtml(person.id)}" type="number" inputmode="decimal" min="0" step="0.1" value="${expense ? (expense.shares?.[person.id] ?? 0) : 1}" /></label>`).join("")}`;
   } else {
     ui.splitFields.innerHTML = `<span class="eyebrow">Add each item and who shared it</span><div id="item-list"></div>
       <button class="button button-quiet" type="button" data-action="add-item">+ Add item</button>`;
-    addItemRow(trip);
+    if (expense?.items?.length) {
+      for (const item of expense.items) addItemRow(trip, item, participants);
+    } else {
+      addItemRow(trip, null, participants);
+    }
   }
 }
 
-function addItemRow(trip) {
+function addItemRow(trip, item = null, participants = activePeople(trip)) {
   const list = document.querySelector("#item-list");
   if (!list) return;
   const itemId = makeId();
+  const itemParticipants = item ? Object.keys(item.shares ?? {}) : participants.map((person) => person.id);
+  const currency = ui.expenseForm.elements.currency.value;
   const row = document.createElement("div");
   row.className = "item-split";
   row.dataset.itemId = itemId;
   row.innerHTML = `<div class="item-fields">
-    <input name="item-name" required maxlength="60" placeholder="Item name" aria-label="Item name" />
-    <input name="item-amount" type="number" inputmode="decimal" min="${CURRENCY_DIGITS.has(ui.expenseForm.elements.currency.value) ? "1" : "0.01"}" step="${CURRENCY_DIGITS.has(ui.expenseForm.elements.currency.value) ? "1" : "0.01"}" required placeholder="Amount" aria-label="Item amount" />
+    <input name="item-name" required maxlength="60" placeholder="Item name" aria-label="Item name" value="${escapeHtml(item?.description ?? "")}" />
+    <input name="item-amount" type="number" inputmode="decimal" min="${CURRENCY_DIGITS.has(currency) ? "1" : "0.01"}" step="${CURRENCY_DIGITS.has(currency) ? "1" : "0.01"}" required placeholder="Amount" aria-label="Item amount" value="${item ? centsToInput(item.amountCents, currency) : ""}" />
     <button type="button" data-action="remove-item" aria-label="Remove item">×</button>
-  </div>${renderParticipantChecks(trip, `item-${itemId}`)}`;
+  </div>${renderParticipantChecks(trip, `item-${itemId}`, itemParticipants, participants)}`;
   list.append(row);
 }
 
 function openExpenseDialog() {
   const trip = activeTrip();
   if (!trip) return;
+  editingExpenseId = null;
   ui.expenseForm.reset();
   ui.expenseError.textContent = "";
+  ui.expenseForm.querySelector(".dialog-heading h2").textContent = "New expense";
+  ui.expenseForm.querySelector('[type="submit"]').textContent = "Save expense";
+  ui.expenseForm.elements.date.value = new Date().toISOString().slice(0, 10);
   ui.expenseForm.elements.currency.value = trip.currency;
-  ui.expenseForm.elements.paidBy.innerHTML = trip.people.map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join("");
-  buildSplitFields();
+  ui.expenseForm.elements.paidBy.innerHTML = activePeople(trip).map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join("");
+  buildSplitFields(trip);
+  openDialog(ui.expenseDialog);
+}
+
+function openEditExpense(expenseId) {
+  const trip = activeTrip();
+  const expense = trip?.expenses.find((entry) => entry.id === expenseId);
+  if (!trip || !expense) {
+    showToast("That expense could not be found.");
+    return;
+  }
+  editingExpenseId = expenseId;
+  const form = ui.expenseForm;
+  form.reset();
+  ui.expenseError.textContent = "";
+  form.querySelector(".dialog-heading h2").textContent = "Edit expense";
+  form.querySelector('[type="submit"]').textContent = "Save changes";
+  form.elements.description.value = expense.description;
+  form.elements.date.value = expense.date;
+  form.elements.amount.value = centsToInput(expense.amountCents, expense.currency);
+  form.elements.currency.value = expense.currency;
+  form.elements.method.value = expense.method;
+  const participants = expensePeople(trip, expense);
+  form.elements.paidBy.innerHTML = participants.map((person) =>
+    `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join("");
+  form.elements.paidBy.value = expense.paidBy;
+  buildSplitFields(trip, expense);
   openDialog(ui.expenseDialog);
 }
 
@@ -356,7 +481,9 @@ function createExpense(event) {
   const form = ui.expenseForm;
   const currency = form.elements.currency.value;
   const method = form.elements.method.value;
-  let amountCents = amountToCents(form.elements.amount.value, currency);
+  const originalExpense = editingExpenseId ? trip.expenses.find((expense) => expense.id === editingExpenseId) : null;
+  const participants = expensePeople(trip, originalExpense);
+  let amountCents = method === "items" ? 0 : amountToCents(form.elements.amount.value, currency);
   let shares = {};
   let items = [];
   try {
@@ -365,7 +492,7 @@ function createExpense(event) {
       if (!peopleIds.length) throw new Error("Select at least one person to split this expense.");
       shares = splitEqual(amountCents, peopleIds);
     } else if (method === "custom") {
-      const values = Object.fromEntries(trip.people.map((person) => [
+      const values = Object.fromEntries(participants.map((person) => [
         person.id,
         amountToCents(form.elements[`custom-${person.id}`].value, currency),
       ]).filter(([, cents]) => cents > 0));
@@ -374,7 +501,7 @@ function createExpense(event) {
       if (!Object.keys(values).length) throw new Error("Enter a share for at least one person.");
       shares = values;
     } else if (method === "weighted") {
-      const weights = Object.fromEntries(trip.people.map((person) => [
+      const weights = Object.fromEntries(participants.map((person) => [
         person.id,
         Number(form.elements[`weight-${person.id}`].value),
       ]));
@@ -386,8 +513,10 @@ function createExpense(event) {
         const itemAmount = amountToCents(row.querySelector('[name="item-amount"]').value, currency);
         const participantIds = selectedParticipantIds(`item-${row.dataset.itemId}`);
         if (!itemAmount || !participantIds.length) throw new Error("Each item needs an amount and at least one person.");
+        const itemDescription = row.querySelector('[name="item-name"]').value.trim();
+        if (!itemDescription) throw new Error("Each item needs a description.");
         const itemShares = splitEqual(itemAmount, participantIds);
-        items.push({ description: row.querySelector('[name="item-name"]').value.trim(), amountCents: itemAmount, shares: itemShares });
+        items.push({ description: itemDescription, amountCents: itemAmount, shares: itemShares });
         for (const [personId, cents] of Object.entries(itemShares)) shares[personId] = (shares[personId] ?? 0) + cents;
         amountCents += itemAmount;
       }
@@ -397,11 +526,12 @@ function createExpense(event) {
     const description = form.elements.description.value.trim();
     if (!description) throw new Error("Add a description for the expense.");
     const methodLabels = { equal: "Equal split", custom: "Custom split", weighted: "Weighted split", items: "Itemized split" };
-    trip.expenses.push({
-      id: makeId(),
+    const savedExpense = {
+      id: originalExpense?.id ?? makeId(),
       description,
-      date: new Date().toISOString().slice(0, 10),
-      createdAt: new Date().toISOString(),
+      date: form.elements.date.value,
+      createdAt: originalExpense?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       amountCents,
       currency,
       paidBy: form.elements.paidBy.value,
@@ -409,11 +539,18 @@ function createExpense(event) {
       methodLabel: methodLabels[method],
       shares,
       items,
-    });
+    };
+    if (originalExpense) {
+      const index = trip.expenses.findIndex((expense) => expense.id === editingExpenseId);
+      trip.expenses[index] = savedExpense;
+    } else {
+      trip.expenses.push(savedExpense);
+    }
+    editingExpenseId = null;
     saveLocalData();
     ui.expenseDialog.close();
     render();
-    showToast("Expense saved on this device. Sync Google Drive to back it up.");
+    showToast(`${originalExpense ? "Expense updated" : "Expense saved"} on this device. Sync Google Drive to back it up.`);
   } catch (error) {
     ui.expenseError.textContent = error.message;
   }
@@ -422,14 +559,49 @@ function createExpense(event) {
 function openSettlementDialog() {
   const trip = activeTrip();
   if (!trip) return;
+  editingSettlementId = null;
   const form = ui.settlementForm;
   form.reset();
   ui.settlementError.textContent = "";
+  form.querySelector(".dialog-heading h2").textContent = "Record settlement";
+  form.querySelector('[type="submit"]').textContent = "Record payment";
   const peopleOptions = trip.people.map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join("");
   form.elements.from.innerHTML = peopleOptions;
   form.elements.to.innerHTML = peopleOptions;
-  form.elements.currency.innerHTML = [...new Set([trip.currency, ...trip.expenses.map((expense) => expense.currency)])]
+  form.elements.currency.innerHTML = [...new Set([
+    trip.currency,
+    ...trip.expenses.map((expense) => expense.currency),
+    ...trip.settlements.map((settlement) => settlement.currency),
+  ])]
     .map((currency) => `<option value="${escapeHtml(currency)}">${escapeHtml(currency)}</option>`).join("");
+  openDialog(ui.settlementDialog);
+}
+
+function openEditSettlementDialog(settlementId) {
+  const trip = activeTrip();
+  const settlement = trip?.settlements.find((entry) => entry.id === settlementId);
+  if (!trip || !settlement) {
+    showToast("That settlement could not be found.");
+    return;
+  }
+  editingSettlementId = settlementId;
+  const form = ui.settlementForm;
+  form.reset();
+  ui.settlementError.textContent = "";
+  form.querySelector(".dialog-heading h2").textContent = "Edit settlement";
+  form.querySelector('[type="submit"]').textContent = "Save changes";
+  const peopleOptions = trip.people.map((person) => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`).join("");
+  form.elements.from.innerHTML = peopleOptions;
+  form.elements.to.innerHTML = peopleOptions;
+  form.elements.currency.innerHTML = [...new Set([
+    trip.currency,
+    ...trip.expenses.map((expense) => expense.currency),
+    ...trip.settlements.map((entry) => entry.currency),
+  ])].map((currency) => `<option value="${escapeHtml(currency)}">${escapeHtml(currency)}</option>`).join("");
+  form.elements.from.value = settlement.from;
+  form.elements.to.value = settlement.to;
+  form.elements.currency.value = settlement.currency;
+  form.elements.amount.value = centsToInput(settlement.amountCents, settlement.currency);
   openDialog(ui.settlementDialog);
 }
 
@@ -450,7 +622,10 @@ function createSettlement(event) {
     ui.settlementError.textContent = "Choose two different people.";
     return;
   }
-  const balances = tripBalances(trip);
+  const baseline = editingSettlementId
+    ? { ...trip, settlements: trip.settlements.filter((settlement) => settlement.id !== editingSettlementId) }
+    : trip;
+  const balances = tripBalances(baseline);
   const fromBalance = balances[from]?.[currency] ?? 0;
   const toBalance = balances[to]?.[currency] ?? 0;
   if (fromBalance >= 0 || toBalance <= 0) {
@@ -461,11 +636,43 @@ function createSettlement(event) {
     ui.settlementError.textContent = `The amount is greater than the open balance. Maximum between these people: ${formatMoney(Math.min(Math.abs(fromBalance), toBalance), currency)}.`;
     return;
   }
-  trip.settlements.push({ id: makeId(), from, to, currency, amountCents, createdAt: new Date().toISOString() });
+  const originalSettlement = editingSettlementId
+    ? trip.settlements.find((settlement) => settlement.id === editingSettlementId)
+    : null;
+  const savedSettlement = {
+    id: originalSettlement?.id ?? makeId(),
+    from,
+    to,
+    currency,
+    amountCents,
+    createdAt: originalSettlement?.createdAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (originalSettlement) {
+    const index = trip.settlements.findIndex((settlement) => settlement.id === editingSettlementId);
+    trip.settlements[index] = savedSettlement;
+  } else {
+    trip.settlements.push(savedSettlement);
+  }
+  editingSettlementId = null;
   saveLocalData();
   ui.settlementDialog.close();
   render();
-  showToast("Settlement recorded. Sync Google Drive to back it up.");
+  showToast(`${originalSettlement ? "Settlement updated" : "Settlement recorded"}. Sync Google Drive to back it up.`);
+}
+
+function deleteSettlement(settlementId) {
+  const trip = activeTrip();
+  const settlement = trip?.settlements.find((entry) => entry.id === settlementId);
+  if (!trip || !settlement) {
+    showToast("That settlement could not be found.");
+    return;
+  }
+  if (!window.confirm(`Delete this ${formatMoney(settlement.amountCents, settlement.currency)} settlement? Trip balances will be recalculated.`)) return;
+  trip.settlements = trip.settlements.filter((entry) => entry.id !== settlementId);
+  saveLocalData();
+  render();
+  showToast("Settlement deleted and balances recalculated.");
 }
 
 function exportTrip() {
@@ -488,12 +695,36 @@ function createTrip(event) {
   const startDate = fields.startDate.value;
   const endDate = fields.endDate.value;
   if (endDate < startDate) {
-    showToast("The trip end date must be on or after the start date.");
+    ui.tripError.textContent = "The trip end date must be on or after the start date.";
+    return;
+  }
+  const existingTrip = editingTripId ? data.trips.find((trip) => trip.id === editingTripId) : null;
+  if (editingTripId && !existingTrip) {
+    ui.tripError.textContent = "This trip could not be found. Close this window and try again.";
+    return;
+  }
+  const name = fields.name.value.trim();
+  if (!name) {
+    ui.tripError.textContent = "Add a name for the trip.";
+    return;
+  }
+  if (existingTrip) {
+    existingTrip.name = name;
+    existingTrip.destination = fields.destination.value.trim();
+    existingTrip.startDate = startDate;
+    existingTrip.endDate = endDate;
+    existingTrip.currency = fields.currency.value;
+    saveLocalData();
+    editingTripId = null;
+    form.reset();
+    ui.tripDialog.close();
+    render();
+    showToast("Trip details updated. Sync Google Drive to back up your changes.");
     return;
   }
   const trip = {
     id: makeId(),
-    name: fields.name.value.trim(),
+    name,
     destination: fields.destination.value.trim(),
     startDate,
     endDate,
@@ -506,7 +737,7 @@ function createTrip(event) {
   const names = fields.people.value.split(",").map((name) => name.trim()).filter(Boolean);
   for (const name of names) addParticipant(trip, name);
   if (!trip.people.length) {
-    showToast("Add at least one person to the trip.");
+    ui.tripError.textContent = "Add at least one person to the trip.";
     return;
   }
   data.trips.push(trip);
@@ -521,18 +752,115 @@ function createTrip(event) {
 function addPerson() {
   const trip = activeTrip();
   if (!trip) return;
-  const name = window.prompt("Name of the person to add:");
-  if (name === null) return;
-  if (!name.trim()) {
-    showToast("Enter a name for the person.");
+  ui.peopleForm.reset();
+  ui.peopleError.textContent = "";
+  renderPeopleList(trip);
+  openDialog(ui.peopleDialog);
+}
+
+function renderPeopleList(trip) {
+  ui.peopleList.innerHTML = trip.people.map((person) => {
+    const isActive = person.active !== false;
+    const label = isActive ? "Remove" : "Restore";
+    const action = isActive ? "remove-person" : "restore-person";
+    return `<div class="people-row">
+      <span class="people-name"><input name="person-name-${escapeHtml(person.id)}" value="${escapeHtml(person.name)}" aria-label="Name for ${escapeHtml(person.name)}" /><small>${isActive ? "Included in new expenses" : "Removed from new expenses"}</small></span>
+      <span class="people-actions">
+        <button class="row-action" type="button" data-action="rename-person" data-person-id="${escapeHtml(person.id)}">Save name</button>
+        <button class="row-action ${isActive ? "row-action-danger" : ""}" type="button" data-action="${action}" data-person-id="${escapeHtml(person.id)}">${label}</button>
+      </span>
+    </div>`;
+  }).join("");
+}
+
+function renameParticipant(personId) {
+  const trip = activeTrip();
+  const person = trip?.people.find((entry) => entry.id === personId);
+  const input = ui.peopleList.querySelector(`[name="person-name-${CSS.escape(personId)}"]`);
+  const name = input?.value.trim() ?? "";
+  if (!trip || !person || !name) {
+    ui.peopleError.textContent = "Enter a name for the participant.";
     return;
   }
-  if (!addParticipant(trip, name)) {
-    showToast("That name is empty or already in this trip.");
+  if (trip.people.some((entry) => entry.id !== personId && entry.name.toLowerCase() === name.toLowerCase())) {
+    ui.peopleError.textContent = "Another participant already has that name.";
     return;
+  }
+  person.name = name;
+  saveLocalData();
+  render();
+  renderPeopleList(trip);
+  ui.peopleError.textContent = "";
+  showToast("Participant name updated.");
+}
+
+function participantIsReferenced(trip, personId) {
+  return trip.expenses.some((expense) =>
+    expense.paidBy === personId ||
+    Object.hasOwn(expense.shares ?? {}, personId) ||
+    (expense.items ?? []).some((item) => Object.hasOwn(item.shares ?? {}, personId))) ||
+    trip.settlements.some((settlement) => settlement.from === personId || settlement.to === personId);
+}
+
+function changeParticipantStatus(personId, active) {
+  const trip = activeTrip();
+  const person = trip?.people.find((entry) => entry.id === personId);
+  if (!trip || !person) {
+    showToast("That participant could not be found.");
+    return;
+  }
+  if (active && person.active !== false) return;
+  if (!active && person.active === false) return;
+  if (!active && activePeople(trip).length <= 1) {
+    showToast("A trip must have at least one active participant.");
+    return;
+  }
+  if (!active && !participantIsReferenced(trip, personId)) {
+    trip.people = trip.people.filter((entry) => entry.id !== personId);
+    showToast(`${person.name} was removed from the trip.`);
+  } else {
+    person.active = active;
+    showToast(active
+      ? `${person.name} was restored for new expenses.`
+      : `${person.name} was removed from new expenses. Their history and balances are preserved.`);
   }
   saveLocalData();
   render();
+  renderPeopleList(trip);
+}
+
+function createParticipant(event) {
+  event.preventDefault();
+  const trip = activeTrip();
+  const name = ui.peopleForm.elements.name.value.trim();
+  if (!trip || !name) {
+    ui.peopleError.textContent = "Enter a name for the person.";
+    return;
+  }
+  if (!addParticipant(trip, name)) {
+    ui.peopleError.textContent = "That person is already active in this trip.";
+    return;
+  }
+  saveLocalData();
+  ui.peopleForm.reset();
+  ui.peopleError.textContent = "";
+  render();
+  renderPeopleList(trip);
+  showToast(`${name} was added to the trip.`);
+}
+
+function deleteExpense(expenseId) {
+  const trip = activeTrip();
+  const expense = trip?.expenses.find((entry) => entry.id === expenseId);
+  if (!trip || !expense) {
+    showToast("That expense could not be found.");
+    return;
+  }
+  if (!window.confirm(`Delete "${expense.description}" (${formatMoney(expense.amountCents, expense.currency)})? This will recalculate trip balances.`)) return;
+  trip.expenses = trip.expenses.filter((entry) => entry.id !== expenseId);
+  saveLocalData();
+  render();
+  showToast("Expense deleted and trip balances recalculated.");
 }
 
 function getGoogleClientId() {
@@ -725,10 +1053,19 @@ function handleClick(event) {
   const actionButton = event.target.closest("[data-action]");
   if (!actionButton) return;
   switch (actionButton.dataset.action) {
-    case "new-trip": openDialog(ui.tripDialog); break;
+    case "new-trip": openNewTripDialog(); break;
+    case "edit-trip": openEditTripDialog(); break;
+    case "delete-trip": deleteTrip(); break;
     case "add-expense": openExpenseDialog(); break;
     case "add-settlement": openSettlementDialog(); break;
     case "add-person": addPerson(); break;
+    case "rename-person": renameParticipant(actionButton.dataset.personId); break;
+    case "edit-expense": openEditExpense(actionButton.dataset.expenseId); break;
+    case "delete-expense": deleteExpense(actionButton.dataset.expenseId); break;
+    case "edit-settlement": openEditSettlementDialog(actionButton.dataset.settlementId); break;
+    case "delete-settlement": deleteSettlement(actionButton.dataset.settlementId); break;
+    case "remove-person": changeParticipantStatus(actionButton.dataset.personId, false); break;
+    case "restore-person": changeParticipantStatus(actionButton.dataset.personId, true); break;
     case "export-trip": exportTrip(); break;
     case "add-item": addItemRow(activeTrip()); break;
     case "remove-item": actionButton.closest(".item-split")?.remove(); break;
@@ -736,23 +1073,25 @@ function handleClick(event) {
 }
 
 function handleInput(event) {
-  if (event.target.matches('select[name="method"], select[name="currency"]')) buildSplitFields();
+  if (!event.target.matches('select[name="method"]')) return;
+  const trip = activeTrip();
+  if (!trip) return;
+  const expense = editingExpenseId ? trip.expenses.find((entry) => entry.id === editingExpenseId) : null;
+  buildSplitFields(trip, expense);
 }
 
 function setupApp() {
   pruneExpiredTrips();
   render();
   updateSyncStatus();
-  document.querySelector("#new-trip").addEventListener("click", () => openDialog(ui.tripDialog));
+  document.querySelector("#new-trip").addEventListener("click", openNewTripDialog);
   ui.tripForm.addEventListener("submit", createTrip);
   ui.expenseForm.addEventListener("submit", createExpense);
   ui.settlementForm.addEventListener("submit", createSettlement);
+  ui.peopleForm.addEventListener("submit", createParticipant);
   ui.connectButton.addEventListener("click", connectGoogleDrive);
   document.addEventListener("click", handleClick);
   ui.expenseForm.addEventListener("change", handleInput);
-  ui.expenseForm.addEventListener("input", (event) => {
-    if (event.target.name === "currency") buildSplitFields();
-  });
   ui.tripForm.elements.startDate.value = new Date().toISOString().slice(0, 10);
   ui.tripForm.elements.endDate.value = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f6f2" />
     <meta name="description" content="A private, simple way to split travel expenses." />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
     <title>Wayfarer — travel expenses</title>
@@ -73,6 +74,7 @@
         <label>People <span class="label-hint">Separate names with commas. You can add more later.</span>
           <input name="people" required placeholder="You, Alex, Sam" />
         </label>
+        <p id="trip-error" class="form-error" role="alert"></p>
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close="trip-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Create trip</button>
@@ -90,6 +92,7 @@
           <button class="close-button" type="button" data-close="expense-dialog" aria-label="Close">×</button>
         </div>
         <label>Description<input name="description" required maxlength="100" placeholder="Dinner by the river" /></label>
+        <label>Date<input name="date" type="date" required /></label>
         <div class="field-row">
           <label>Amount<input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00" /></label>
           <label>Currency
@@ -114,6 +117,26 @@
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close="expense-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Save expense</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="people-dialog" class="dialog">
+      <form id="people-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Trip participants</p>
+            <h2>Manage people</h2>
+          </div>
+          <button class="close-button" type="button" data-close="people-dialog" aria-label="Close">×</button>
+        </div>
+        <p class="people-note">Removing someone keeps their past expenses and balance, but excludes them from new expenses. You can restore them later.</p>
+        <div id="people-list" class="people-list"></div>
+        <label>Add a person<input name="name" required maxlength="60" placeholder="Person's name" /></label>
+        <p id="people-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close="people-dialog">Done</button>
+          <button class="button button-primary" type="submit">Add person</button>
         </div>
       </form>
     </dialog>
