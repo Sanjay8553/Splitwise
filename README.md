@@ -56,15 +56,15 @@ Exported JSON downloads are outside the app and are **not** automatically delete
 
 ## Publish for laptop and phone
 
-This is a static website; any static host works. A straightforward free-tier option is Cloudflare Pages:
+This repository includes a GitHub Pages workflow. The repository is public, so GitHub Pages can host the static site without a separate server:
 
-1. Create a GitHub repository for this source and push the project.
-2. In Cloudflare Pages, import that repository.
-3. Choose **Direct Upload / static assets** with no build command and the repository root (`/`) as the output directory, or use the Pages Git integration with no build step.
-4. Add the resulting HTTPS origin to the OAuth client's authorized JavaScript origins.
-5. Ensure `config.js` is included in the deployed static files. Its OAuth client ID is visible to website visitors by design; do not place a client secret or expense records in it.
+1. Push the `main` branch to GitHub.
+2. In the repository, open **Settings → Pages** and select **GitHub Actions** as the build and deployment source.
+3. Add `https://sanjay8553.github.io` to the OAuth client's authorized JavaScript origins.
+4. Keep the public OAuth client ID in `config.js` so the deployed website can use Google Drive. Never put a client secret or trip data in the repository.
+5. After the workflow completes, open `https://sanjay8553.github.io/Splitwise/` on your laptop or phone.
 
-The site source contains no trip data. Keep the repository private if you prefer not to publish your source. A free hosting plan is subject to the provider's current terms and limits.
+The app source is public in this repository; trip data is not. It is stored in the signed-in Google account's private app-data area and in the browser's local storage. GitHub Pages is subject to GitHub's current terms and usage limits.
 
 ## Data and privacy
 
