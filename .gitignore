@@ -1,1 +1,3 @@
 .DS_Store
+.wayfarer-server-*.pid
+.wayfarer-server-*.log
