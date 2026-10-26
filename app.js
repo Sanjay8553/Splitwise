@@ -370,6 +370,7 @@ function openNewTripDialog() {
   const peopleField = ui.tripForm.elements.people;
   peopleField.closest("label").hidden = false;
   peopleField.required = true;
+  ui.tripForm.elements.currency.value = "INR";
   ui.tripForm.elements.startDate.value = new Date().toISOString().slice(0, 10);
   ui.tripForm.elements.endDate.value = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   openDialog(ui.tripDialog);

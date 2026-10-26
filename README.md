@@ -5,6 +5,7 @@ A responsive, personal travel-expense website. There is no application server or
 ## Features in this starter
 
 - Trips, participants, expenses, and settlements
+- New trips default to INR (Indian Rupee); the trip currency can be changed
 - Edit or delete expenses; remove or restore trip participants while retaining recorded history
 - Equal, custom-amount, weighted, and item-by-item splits
 - Integer-cent calculations with deterministic remainder allocation
