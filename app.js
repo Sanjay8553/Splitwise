@@ -22,6 +22,7 @@ const ui = {
   settlementDialog: document.querySelector("#settlement-dialog"),
   settlementForm: document.querySelector("#settlement-form"),
   settlementError: document.querySelector("#settlement-error"),
+  exportDialog: document.querySelector("#export-dialog"),
   toast: document.querySelector("#toast"),
 };
 
@@ -191,6 +192,35 @@ function tripBalances(trip) {
   return balances;
 }
 
+function suggestedPayments(trip, balances) {
+  const suggestions = [];
+  const currencies = [...new Set(Object.values(balances).flatMap((personBalances) => Object.keys(personBalances)))].sort();
+  for (const currency of currencies) {
+    const debtors = trip.people
+      .map((person) => ({ person, amount: Math.max(0, -(balances[person.id]?.[currency] ?? 0)) }))
+      .filter(({ amount }) => amount > 0)
+      .sort((a, b) => b.amount - a.amount || a.person.id.localeCompare(b.person.id));
+    const creditors = trip.people
+      .map((person) => ({ person, amount: Math.max(0, balances[person.id]?.[currency] ?? 0) }))
+      .filter(({ amount }) => amount > 0)
+      .sort((a, b) => b.amount - a.amount || a.person.id.localeCompare(b.person.id));
+
+    let debtorIndex = 0;
+    let creditorIndex = 0;
+    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+      const debtor = debtors[debtorIndex];
+      const creditor = creditors[creditorIndex];
+      const amount = Math.min(debtor.amount, creditor.amount);
+      suggestions.push({ from: debtor.person, to: creditor.person, amount, currency });
+      debtor.amount -= amount;
+      creditor.amount -= amount;
+      if (debtor.amount === 0) debtorIndex += 1;
+      if (creditor.amount === 0) creditorIndex += 1;
+    }
+  }
+  return suggestions;
+}
+
 function tripTotals(trip) {
   return trip.expenses.reduce((totals, expense) => {
     totals[expense.currency] = (totals[expense.currency] ?? 0) + expense.amountCents;
@@ -233,6 +263,7 @@ function renderTripList() {
 
 function renderTrip(trip) {
   const balances = tripBalances(trip);
+  const payments = suggestedPayments(trip, balances);
   const totals = tripTotals(trip);
   const totalAmount = Object.entries(totals).map(([currency, cents]) => formatMoney(cents, currency)).join(" · ") || formatMoney(0, trip.currency);
   const balanceCurrencies = [...new Set(Object.values(balances).flatMap((personBalances) => Object.keys(personBalances)))];
@@ -275,6 +306,15 @@ function renderTrip(trip) {
   const formattedDates = `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
   const participantsLabel = `${activePeople(trip).length} ${activePeople(trip).length === 1 ? "person" : "people"}`;
   const currencies = Object.keys(totals).length ? `${Object.keys(totals).length} ${Object.keys(totals).length === 1 ? "currency" : "currencies"}` : "No bills yet";
+  const paymentPlan = payments.length
+    ? payments.map(({ from, to, amount, currency }) => `
+      <li class="payment-row">
+        <span class="avatar" aria-hidden="true">${escapeHtml(from.name.trim().slice(0, 1).toUpperCase())}</span>
+        <span class="payment-instruction"><strong>${escapeHtml(from.name)} pays ${escapeHtml(to.name)}</strong><small>Suggested payment · balances kept separate by currency</small></span>
+        <strong class="payment-amount">${formatMoney(amount, currency)}</strong>
+        <button class="row-action payment-record-action" type="button" data-action="record-suggested-payment" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}" data-currency="${escapeHtml(currency)}" data-amount="${amount}">Record payment</button>
+      </li>`).join("")
+    : `<li class="empty-row">${trip.expenses.length ? "Everyone is settled up." : "Add an expense to see suggested payments."}</li>`;
 
   ui.tripContent.innerHTML = `
     <div class="trip-header">
@@ -296,6 +336,10 @@ function renderTrip(trip) {
       <div class="summary-card"><span>Expenses</span><strong>${trip.expenses.length}</strong><small>${trip.settlements.length} settlements recorded</small></div>
       <div class="summary-card"><span>Participants</span><strong>${activePeople(trip).length}</strong><small>${activePeople(trip).map((person) => escapeHtml(person.name)).join(" · ") || "Add someone to the trip"}</small></div>
     </div>
+    <section class="panel payment-plan" aria-label="Who pays whom">
+      <div class="panel-heading"><h3>Who pays whom</h3><span>${payments.length ? `${payments.length} suggested ${payments.length === 1 ? "payment" : "payments"}` : "No payments due"}</span></div>
+      <ul class="payment-list">${paymentPlan}</ul>
+    </section>
     <div class="content-grid">
       <section class="panel" aria-label="Trip expenses">
         <div class="panel-heading"><h3>Expenses</h3><span>${trip.expenses.length} total</span></div>
@@ -309,7 +353,7 @@ function renderTrip(trip) {
     </div>
     <div class="trip-footer">
       <span>Balances stay separate by currency. No exchange rate is assumed.</span>
-      <button class="link-button" type="button" data-action="export-trip">Export trip data</button>
+      <button class="link-button" type="button" data-action="export-trip">Export trip</button>
     </div>`;
 }
 
@@ -556,7 +600,7 @@ function createExpense(event) {
   }
 }
 
-function openSettlementDialog() {
+function openSettlementDialog(suggestion = null) {
   const trip = activeTrip();
   if (!trip) return;
   editingSettlementId = null;
@@ -574,6 +618,12 @@ function openSettlementDialog() {
     ...trip.settlements.map((settlement) => settlement.currency),
   ])]
     .map((currency) => `<option value="${escapeHtml(currency)}">${escapeHtml(currency)}</option>`).join("");
+  if (suggestion) {
+    form.elements.from.value = suggestion.from;
+    form.elements.to.value = suggestion.to;
+    form.elements.currency.value = suggestion.currency;
+    form.elements.amount.value = centsToInput(suggestion.amountCents, suggestion.currency);
+  }
   openDialog(ui.settlementDialog);
 }
 
@@ -675,17 +725,187 @@ function deleteSettlement(settlementId) {
   showToast("Settlement deleted and balances recalculated.");
 }
 
-function exportTrip() {
-  const trip = activeTrip();
-  if (!trip) return;
-  const blob = new Blob([JSON.stringify(trip, null, 2)], { type: "application/json" });
+function exportFilename(trip, extension) {
+  const name = trip.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "trip";
+  return `${name}-expenses.${extension}`;
+}
+
+function downloadExport(contents, mimeType, filename) {
+  const blob = new Blob([contents], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${trip.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "trip"}-expenses.json`;
+  link.download = filename;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
-  showToast("Trip data exported. Downloaded copies are outside the app and are not auto-deleted.");
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 30_000);
+}
+
+function exportCsvCell(value) {
+  if (typeof value === "number") return String(value);
+  let text = String(value ?? "");
+  if (/^[\t\r ]*[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportAmount(cents, currency) {
+  return Number(centsToInput(cents, currency));
+}
+
+function exportCsv(trip) {
+  const balances = tripBalances(trip);
+  const payments = suggestedPayments(trip, balances);
+  const balanceCurrencies = [...new Set([
+    trip.currency,
+    ...trip.expenses.map((expense) => expense.currency),
+    ...trip.settlements.map((settlement) => settlement.currency),
+  ])].sort();
+  const rows = [
+    ["Section", "Date", "Description", "Paid by", "From / participant", "To", "Amount", "Currency", "Split method", "Share details"],
+    ["Trip", "", trip.name, "", "", "", "", trip.currency, "", `${trip.destination || ""} · ${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`],
+  ];
+  for (const [currency, cents] of Object.entries(tripTotals(trip))) {
+    rows.push(["Expense total", "", `Total recorded in ${currency}`, "", "", "", exportAmount(cents, currency), currency, "", "Expenses only"]);
+  }
+  for (const person of trip.people) {
+    rows.push(["Participant", "", "", "", person.name, "", "", "", person.active === false ? "Removed" : "Active", ""]);
+  }
+
+  for (const expense of trip.expenses) {
+    const payer = trip.people.find((person) => person.id === expense.paidBy)?.name ?? "Unknown";
+    const shares = Object.entries(expense.shares ?? {}).map(([personId, cents]) => {
+      const person = trip.people.find((entry) => entry.id === personId)?.name ?? "Unknown";
+      return `${person}: ${formatMoney(cents, expense.currency)}`;
+    }).join("; ");
+    rows.push(["Expense", formatDate(expense.date), expense.description, payer, "", "", exportAmount(expense.amountCents, expense.currency), expense.currency, expense.methodLabel, shares]);
+    for (const item of expense.items ?? []) {
+      const itemShares = Object.entries(item.shares ?? {}).map(([personId, cents]) => {
+        const person = trip.people.find((entry) => entry.id === personId)?.name ?? "Unknown";
+        return `${person}: ${formatMoney(cents, expense.currency)}`;
+      }).join("; ");
+      rows.push(["Expense item", formatDate(expense.date), item.description, payer, "", "", exportAmount(item.amountCents, expense.currency), expense.currency, "", itemShares]);
+    }
+  }
+
+  for (const person of trip.people) {
+    for (const currency of balanceCurrencies) {
+      const cents = balances[person.id]?.[currency] ?? 0;
+      rows.push(["Balance", "", "", "", person.name, "", exportAmount(cents, currency), currency, person.active === false ? "Removed participant" : "", "Positive = owed money; negative = owes money"]);
+    }
+  }
+
+  for (const payment of payments) {
+    rows.push(["Suggested payment", "", "", "", payment.from.name, payment.to.name, exportAmount(payment.amount, payment.currency), payment.currency, "", "Calculated from current balances"]);
+  }
+
+  for (const settlement of trip.settlements) {
+    const from = trip.people.find((person) => person.id === settlement.from)?.name ?? "Unknown";
+    const to = trip.people.find((person) => person.id === settlement.to)?.name ?? "Unknown";
+    rows.push(["Recorded payment", formatDate(settlement.createdAt?.slice(0, 10)), "", from, "", to, exportAmount(settlement.amountCents, settlement.currency), settlement.currency, "", "Already recorded; reflected in balances"]);
+  }
+
+  return `\uFEFF${rows.map((row) => row.map(exportCsvCell).join(",")).join("\r\n")}`;
+}
+
+function exportExcel() {
+  const trip = activeTrip();
+  if (!trip) return;
+  downloadExport(exportCsv(trip), "text/csv;charset=utf-8", exportFilename(trip, "csv"));
+  ui.exportDialog.close();
+  showToast("Excel-compatible CSV exported. Open the downloaded file in Excel; downloaded copies are not auto-deleted.");
+}
+
+function reportTable(headers, rows) {
+  const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+  const body = rows.length
+    ? rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")
+    : `<tr><td colspan="${headers.length}">None recorded</td></tr>`;
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function exportPdf() {
+  const trip = activeTrip();
+  if (!trip) return;
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    showToast("The report could not open. Allow pop-ups for this site, then try again.");
+    return;
+  }
+
+  const balances = tripBalances(trip);
+  const payments = suggestedPayments(trip, balances);
+  const balanceCurrencies = [...new Set([
+    trip.currency,
+    ...trip.expenses.map((expense) => expense.currency),
+    ...trip.settlements.map((settlement) => settlement.currency),
+  ])].sort();
+  const expenseRows = trip.expenses.map((expense) => {
+    const payer = trip.people.find((person) => person.id === expense.paidBy)?.name ?? "Unknown";
+    const shares = Object.entries(expense.shares ?? {}).map(([personId, cents]) => {
+      const person = trip.people.find((entry) => entry.id === personId)?.name ?? "Unknown";
+      return `${person}: ${formatMoney(cents, expense.currency)}`;
+    }).join("; ");
+    return [formatDate(expense.date), expense.description, payer, formatMoney(expense.amountCents, expense.currency), expense.methodLabel, shares];
+  });
+  const itemRows = trip.expenses.flatMap((expense) => (expense.items ?? []).map((item) => {
+    const shares = Object.entries(item.shares ?? {}).map(([personId, cents]) => {
+      const person = trip.people.find((entry) => entry.id === personId)?.name ?? "Unknown";
+      return `${person}: ${formatMoney(cents, expense.currency)}`;
+    }).join("; ");
+    return [expense.description, item.description, formatMoney(item.amountCents, expense.currency), shares];
+  }));
+  const balanceRows = trip.people.flatMap((person) => balanceCurrencies.map((currency) => {
+    const cents = balances[person.id]?.[currency] ?? 0;
+    return [
+      person.name + (person.active === false ? " (removed)" : ""),
+      cents > 0 ? "Is owed" : cents < 0 ? "Owes" : "Settled",
+      formatMoney(Math.abs(cents), currency),
+    ];
+  }));
+  const paymentRows = payments.map(({ from, to, amount, currency }) => [from.name, to.name, formatMoney(amount, currency)]);
+  const settlementRows = trip.settlements.map((settlement) => [
+    formatDate(settlement.createdAt?.slice(0, 10)),
+    trip.people.find((person) => person.id === settlement.from)?.name ?? "Unknown",
+    trip.people.find((person) => person.id === settlement.to)?.name ?? "Unknown",
+    formatMoney(settlement.amountCents, settlement.currency),
+  ]);
+  const totalRows = Object.entries(tripTotals(trip)).map(([currency, cents]) => [currency, formatMoney(cents, currency)]);
+  const reportDetails = [
+    ["Destination", trip.destination || "Not specified"],
+    ["Dates", `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`],
+    ["Participants", trip.people.map((person) => `${person.name}${person.active === false ? " (removed)" : ""}`).join(", ") || "None"],
+  ];
+  const title = escapeHtml(trip.name);
+  const documentHtml = `<!doctype html>
+    <html lang="en"><head><meta charset="utf-8"><title>${title} — expense report</title>
+      <style>
+        body{font:14px Arial,sans-serif;color:#23352a;margin:32px}h1{margin-bottom:4px}h2{margin:26px 0 10px;font-size:18px}
+        p{color:#59675e}.meta{margin:0 0 24px}table{width:100%;border-collapse:collapse;margin-bottom:18px}
+        th,td{padding:8px;border:1px solid #d9e0d9;text-align:left;vertical-align:top}th{background:#eef3ed}
+        .note{font-size:12px;color:#66736a}@media print{body{margin:14mm}h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}}
+      </style>
+    </head><body>
+      <h1>${title} — expense report</h1>
+      <p class="meta">${escapeHtml(trip.destination || "Trip")} · ${escapeHtml(formatDate(trip.startDate))} – ${escapeHtml(formatDate(trip.endDate))} · ${escapeHtml(trip.currency)} home currency</p>
+      <p>Generated ${escapeHtml(new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date()))}. Different currencies are shown separately; no exchange rate is assumed.</p>
+      <h2>Trip details</h2>${reportTable(["Detail", "Value"], reportDetails)}
+      <h2>Expense totals by currency</h2>${reportTable(["Currency", "Total"], totalRows)}
+      <h2>Expenses</h2>${reportTable(["Date", "Description", "Paid by", "Amount", "Split method", "Shares"], expenseRows)}
+      <h2>Item details</h2>${reportTable(["Expense", "Item", "Amount", "Shares"], itemRows)}
+      <h2>Balances</h2>${reportTable(["Participant", "Status", "Balance"], balanceRows)}
+      <h2>Who pays whom</h2>${reportTable(["Payer", "Payee", "Suggested amount"], paymentRows)}
+      <p class="note">${payments.length ? "Suggested payments settle the current balances. Record a payment in the app after it is made." : "No payments are currently due."}</p>
+      <h2>Recorded payments</h2>${reportTable(["Date", "Paid by", "Paid to", "Amount"], settlementRows)}
+      <script>window.addEventListener("load",()=>{window.focus();window.print()});</script>
+    </body></html>`;
+  printWindow.document.open();
+  printWindow.document.write(documentHtml);
+  printWindow.document.close();
+  ui.exportDialog.close();
+  showToast("Print dialog opened. Choose Save as PDF to download the trip report.");
 }
 
 function createTrip(event) {
@@ -1058,6 +1278,14 @@ function handleClick(event) {
     case "delete-trip": deleteTrip(); break;
     case "add-expense": openExpenseDialog(); break;
     case "add-settlement": openSettlementDialog(); break;
+    case "record-suggested-payment":
+      openSettlementDialog({
+        from: actionButton.dataset.from,
+        to: actionButton.dataset.to,
+        currency: actionButton.dataset.currency,
+        amountCents: Number(actionButton.dataset.amount),
+      });
+      break;
     case "add-person": addPerson(); break;
     case "rename-person": renameParticipant(actionButton.dataset.personId); break;
     case "edit-expense": openEditExpense(actionButton.dataset.expenseId); break;
@@ -1066,7 +1294,9 @@ function handleClick(event) {
     case "delete-settlement": deleteSettlement(actionButton.dataset.settlementId); break;
     case "remove-person": changeParticipantStatus(actionButton.dataset.personId, false); break;
     case "restore-person": changeParticipantStatus(actionButton.dataset.personId, true); break;
-    case "export-trip": exportTrip(); break;
+    case "export-trip": ui.exportDialog.showModal(); break;
+    case "export-pdf": exportPdf(); break;
+    case "export-excel": exportExcel(); break;
     case "add-item": addItemRow(activeTrip()); break;
     case "remove-item": actionButton.closest(".item-split")?.remove(); break;
   }

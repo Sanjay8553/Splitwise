@@ -9,9 +9,13 @@ A responsive, personal travel-expense website. There is no application server or
 - Equal, custom-amount, weighted, and item-by-item splits
 - Integer-cent calculations with deterministic remainder allocation
 - Balances remain grouped by currency; the app does not guess exchange rates
+- A per-trip "Who pays whom" plan suggests payments that settle the current balances
+- Suggested payments can be recorded directly with payer, recipient, currency, and amount prefilled
+- Larger, higher-contrast labels and touch controls for easier use on phones
 - Optional Google Drive sync across browsers signed in to the same Google account
 - A local browser copy for offline use
-- Trip export to JSON
+- Per-trip PDF report with trip details, expenses, splits, balances, suggested payments, and recorded payments
+- Excel-compatible CSV export with expenses, item splits, balances, suggested payments, and recorded payments
 - Expired trips are pruned when the app is opened; a later Drive sync carries deletions to Google
 - Responsive layout and a small offline app-shell cache
 
@@ -59,7 +63,7 @@ Google Drive is a third-party provider. The data is not end-to-end encrypted by 
 
 A trip is considered expired at midnight UTC 30 days after its end date. Expired trip records are removed from the browser when the app next opens. They are removed from Google Drive when the app next syncs. A static website cannot run a background deletion job while it is closed, so the deletion is not guaranteed to happen exactly at the expiry instant.
 
-Exported JSON downloads are outside the app and are **not** automatically deleted. Delete those downloads yourself if you want them removed too.
+PDF and CSV downloads are outside the app and are **not** automatically deleted. Delete those downloads yourself if you want them removed too. PDF export opens the browser print dialog; choose **Save as PDF** to download the report. The CSV spreadsheet can be opened in Excel.
 
 ## Publish for laptop and phone
 

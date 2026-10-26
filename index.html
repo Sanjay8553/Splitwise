@@ -26,7 +26,7 @@
         </div>
       </header>
 
-      <main id="app" class="layout" aria-live="polite">
+      <main id="app" class="layout">
         <aside class="sidebar">
           <div class="sidebar-heading">
             <div>
@@ -162,6 +162,27 @@
           <button class="button button-primary" type="submit">Record payment</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="export-dialog" class="dialog">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Take your trip details with you</p>
+            <h2>Export trip</h2>
+          </div>
+          <button class="close-button" type="button" data-close="export-dialog" aria-label="Close">×</button>
+        </div>
+        <button class="export-choice" type="button" data-action="export-pdf">
+          <span class="export-choice-icon" aria-hidden="true">PDF</span>
+          <span><strong>PDF report</strong><small>Print-ready summary of trip details, expenses and splits, balances, suggested payments, and recorded payments. Choose “Save as PDF” in the print window.</small></span>
+        </button>
+        <button class="export-choice" type="button" data-action="export-excel">
+          <span class="export-choice-icon" aria-hidden="true">XLS</span>
+          <span><strong>Excel spreadsheet (.csv)</strong><small>Download a table of trip details, expenses and item splits, balances, suggested payments, and recorded payments. Open it in Excel to sort or edit.</small></span>
+        </button>
+        <p class="export-note">Downloaded reports are saved outside the app and are not automatically deleted.</p>
+      </div>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
