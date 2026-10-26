@@ -1,4 +1,4 @@
-const CACHE_NAME = "wayfarer-shell-v4";
+const CACHE_NAME = "wayfarer-shell-v5";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./config.js", "./manifest.webmanifest", "./favicon.svg"];
 
 self.addEventListener("install", (event) => {
