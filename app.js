@@ -37,6 +37,8 @@ let toastTimer = null;
 let editingExpenseId = null;
 let editingTripId = null;
 let editingSettlementId = null;
+let expenseSubmissionLocked = false;
+let settlementSubmissionLocked = false;
 
 function makeId() {
   return crypto.randomUUID();
@@ -146,6 +148,10 @@ function amountToCents(raw, currency) {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.round(value * (CURRENCY_DIGITS.has(currency) ? 1 : 100));
+}
+
+function normalizeDuplicateText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function centsToInput(cents, currency) {
@@ -482,6 +488,7 @@ function openExpenseDialog() {
   const trip = activeTrip();
   if (!trip) return;
   editingExpenseId = null;
+  expenseSubmissionLocked = false;
   ui.expenseForm.reset();
   ui.expenseError.textContent = "";
   ui.expenseForm.querySelector(".dialog-heading h2").textContent = "New expense";
@@ -501,6 +508,7 @@ function openEditExpense(expenseId) {
     return;
   }
   editingExpenseId = expenseId;
+  expenseSubmissionLocked = false;
   const form = ui.expenseForm;
   form.reset();
   ui.expenseError.textContent = "";
@@ -521,6 +529,7 @@ function openEditExpense(expenseId) {
 
 function createExpense(event) {
   event.preventDefault();
+  if (expenseSubmissionLocked) return;
   const trip = activeTrip();
   if (!trip) return;
   const form = ui.expenseForm;
@@ -585,6 +594,20 @@ function createExpense(event) {
       shares,
       items,
     };
+    const duplicateExpenses = trip.expenses.filter((expense) =>
+      expense.id !== savedExpense.id
+      && expense.date === savedExpense.date
+      && normalizeDuplicateText(expense.description) === normalizeDuplicateText(savedExpense.description)
+      && expense.amountCents === savedExpense.amountCents
+      && expense.currency === savedExpense.currency
+      && expense.paidBy === savedExpense.paidBy);
+    if (duplicateExpenses.length) {
+      const duplicate = duplicateExpenses[0];
+      const payerName = trip.people.find((person) => person.id === duplicate.paidBy)?.name ?? "the same person";
+      const duplicateCount = duplicateExpenses.length > 1 ? ` (${duplicateExpenses.length} matching expenses found)` : "";
+      if (!window.confirm(`This looks like an existing expense${duplicateCount}: "${duplicate.description}" on ${formatDate(duplicate.date)} for ${formatMoney(duplicate.amountCents, duplicate.currency)}, paid by ${payerName}. Save this expense anyway?`)) return;
+    }
+    expenseSubmissionLocked = true;
     if (originalExpense) {
       const index = trip.expenses.findIndex((expense) => expense.id === editingExpenseId);
       trip.expenses[index] = savedExpense;
@@ -605,6 +628,7 @@ function openSettlementDialog(suggestion = null) {
   const trip = activeTrip();
   if (!trip) return;
   editingSettlementId = null;
+  settlementSubmissionLocked = false;
   const form = ui.settlementForm;
   form.reset();
   ui.settlementError.textContent = "";
@@ -636,6 +660,7 @@ function openEditSettlementDialog(settlementId) {
     return;
   }
   editingSettlementId = settlementId;
+  settlementSubmissionLocked = false;
   const form = ui.settlementForm;
   form.reset();
   ui.settlementError.textContent = "";
@@ -658,6 +683,7 @@ function openEditSettlementDialog(settlementId) {
 
 function createSettlement(event) {
   event.preventDefault();
+  if (settlementSubmissionLocked) return;
   const trip = activeTrip();
   if (!trip) return;
   const form = ui.settlementForm;
@@ -690,13 +716,26 @@ function createSettlement(event) {
   const originalSettlement = editingSettlementId
     ? trip.settlements.find((settlement) => settlement.id === editingSettlementId)
     : null;
+  const createdAt = originalSettlement?.createdAt ?? new Date().toISOString();
+  const duplicateSettlements = trip.settlements.filter((settlement) =>
+    settlement.id !== originalSettlement?.id
+    && settlement.createdAt?.slice(0, 10) === createdAt.slice(0, 10)
+    && settlement.from === from
+    && settlement.to === to
+    && settlement.amountCents === amountCents
+    && settlement.currency === currency);
+  if (duplicateSettlements.length) {
+    const duplicateCount = duplicateSettlements.length > 1 ? ` (${duplicateSettlements.length} matching payments found)` : "";
+    if (!window.confirm(`This looks like a payment already recorded on ${formatDate(createdAt.slice(0, 10))}${duplicateCount}: ${formatMoney(amountCents, currency)} from ${trip.people.find((person) => person.id === from)?.name ?? "this payer"} to ${trip.people.find((person) => person.id === to)?.name ?? "this recipient"}. Record it anyway?`)) return;
+  }
+  settlementSubmissionLocked = true;
   const savedSettlement = {
     id: originalSettlement?.id ?? makeId(),
     from,
     to,
     currency,
     amountCents,
-    createdAt: originalSettlement?.createdAt ?? new Date().toISOString(),
+    createdAt,
     updatedAt: new Date().toISOString(),
   };
   if (originalSettlement) {

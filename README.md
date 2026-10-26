@@ -8,6 +8,8 @@ A responsive, personal travel-expense website. There is no application server or
 - New trips default to INR (Indian Rupee); the trip currency can be changed
 - Edit or delete expenses; remove or restore trip participants while retaining recorded history
 - Equal, custom-amount, weighted, and item-by-item splits
+- Likely duplicate expenses and payments trigger a confirmation but can still be recorded when they are intentional
+- Repeated form submissions are ignored after a record has been saved
 - Integer-cent calculations with deterministic remainder allocation
 - Balances remain grouped by currency; the app does not guess exchange rates
 - A per-trip "Who pays whom" plan suggests payments that settle the current balances
