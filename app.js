@@ -15,6 +15,10 @@ const ui = {
   expenseForm: document.querySelector("#expense-form"),
   splitFields: document.querySelector("#split-fields"),
   expenseError: document.querySelector("#expense-error"),
+  expenseDuplicateWarning: document.querySelector("#expense-duplicate-warning"),
+  expenseDuplicateMessage: document.querySelector("#expense-duplicate-message"),
+  expenseDuplicateCancel: document.querySelector("#expense-duplicate-cancel"),
+  expenseDuplicateConfirm: document.querySelector("#expense-duplicate-confirm"),
   peopleDialog: document.querySelector("#people-dialog"),
   peopleForm: document.querySelector("#people-form"),
   peopleList: document.querySelector("#people-list"),
@@ -22,6 +26,10 @@ const ui = {
   settlementDialog: document.querySelector("#settlement-dialog"),
   settlementForm: document.querySelector("#settlement-form"),
   settlementError: document.querySelector("#settlement-error"),
+  settlementDuplicateWarning: document.querySelector("#settlement-duplicate-warning"),
+  settlementDuplicateMessage: document.querySelector("#settlement-duplicate-message"),
+  settlementDuplicateCancel: document.querySelector("#settlement-duplicate-cancel"),
+  settlementDuplicateConfirm: document.querySelector("#settlement-duplicate-confirm"),
   exportDialog: document.querySelector("#export-dialog"),
   toast: document.querySelector("#toast"),
 };
@@ -39,6 +47,8 @@ let editingTripId = null;
 let editingSettlementId = null;
 let expenseSubmissionLocked = false;
 let settlementSubmissionLocked = false;
+let expenseDuplicateConfirmed = false;
+let settlementDuplicateConfirmed = false;
 
 function makeId() {
   return crypto.randomUUID();
@@ -152,6 +162,18 @@ function amountToCents(raw, currency) {
 
 function normalizeDuplicateText(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function clearExpenseDuplicateWarning() {
+  expenseDuplicateConfirmed = false;
+  ui.expenseDuplicateWarning.hidden = true;
+  ui.expenseDuplicateMessage.textContent = "";
+}
+
+function clearSettlementDuplicateWarning() {
+  settlementDuplicateConfirmed = false;
+  ui.settlementDuplicateWarning.hidden = true;
+  ui.settlementDuplicateMessage.textContent = "";
 }
 
 function centsToInput(cents, currency) {
@@ -489,6 +511,7 @@ function openExpenseDialog() {
   if (!trip) return;
   editingExpenseId = null;
   expenseSubmissionLocked = false;
+  clearExpenseDuplicateWarning();
   ui.expenseForm.reset();
   ui.expenseError.textContent = "";
   ui.expenseForm.querySelector(".dialog-heading h2").textContent = "New expense";
@@ -509,6 +532,7 @@ function openEditExpense(expenseId) {
   }
   editingExpenseId = expenseId;
   expenseSubmissionLocked = false;
+  clearExpenseDuplicateWarning();
   const form = ui.expenseForm;
   form.reset();
   ui.expenseError.textContent = "";
@@ -601,12 +625,16 @@ function createExpense(event) {
       && expense.amountCents === savedExpense.amountCents
       && expense.currency === savedExpense.currency
       && expense.paidBy === savedExpense.paidBy);
-    if (duplicateExpenses.length) {
+    if (duplicateExpenses.length && !expenseDuplicateConfirmed) {
       const duplicate = duplicateExpenses[0];
       const payerName = trip.people.find((person) => person.id === duplicate.paidBy)?.name ?? "the same person";
       const duplicateCount = duplicateExpenses.length > 1 ? ` (${duplicateExpenses.length} matching expenses found)` : "";
-      if (!window.confirm(`This looks like an existing expense${duplicateCount}: "${duplicate.description}" on ${formatDate(duplicate.date)} for ${formatMoney(duplicate.amountCents, duplicate.currency)}, paid by ${payerName}. Save this expense anyway?`)) return;
+      ui.expenseDuplicateMessage.textContent = `This looks like an existing expense${duplicateCount}: "${duplicate.description}" on ${formatDate(duplicate.date)} for ${formatMoney(duplicate.amountCents, duplicate.currency)}, paid by ${payerName}.`;
+      ui.expenseDuplicateWarning.hidden = false;
+      ui.expenseDuplicateConfirm.focus();
+      return;
     }
+    clearExpenseDuplicateWarning();
     expenseSubmissionLocked = true;
     if (originalExpense) {
       const index = trip.expenses.findIndex((expense) => expense.id === editingExpenseId);
@@ -620,6 +648,7 @@ function createExpense(event) {
     render();
     showToast(`${originalExpense ? "Expense updated" : "Expense saved"} on this device. Sync Google Drive to back it up.`);
   } catch (error) {
+    expenseSubmissionLocked = false;
     ui.expenseError.textContent = error.message;
   }
 }
@@ -629,6 +658,7 @@ function openSettlementDialog(suggestion = null) {
   if (!trip) return;
   editingSettlementId = null;
   settlementSubmissionLocked = false;
+  clearSettlementDuplicateWarning();
   const form = ui.settlementForm;
   form.reset();
   ui.settlementError.textContent = "";
@@ -661,6 +691,7 @@ function openEditSettlementDialog(settlementId) {
   }
   editingSettlementId = settlementId;
   settlementSubmissionLocked = false;
+  clearSettlementDuplicateWarning();
   const form = ui.settlementForm;
   form.reset();
   ui.settlementError.textContent = "";
@@ -724,10 +755,14 @@ function createSettlement(event) {
     && settlement.to === to
     && settlement.amountCents === amountCents
     && settlement.currency === currency);
-  if (duplicateSettlements.length) {
+  if (duplicateSettlements.length && !settlementDuplicateConfirmed) {
     const duplicateCount = duplicateSettlements.length > 1 ? ` (${duplicateSettlements.length} matching payments found)` : "";
-    if (!window.confirm(`This looks like a payment already recorded on ${formatDate(createdAt.slice(0, 10))}${duplicateCount}: ${formatMoney(amountCents, currency)} from ${trip.people.find((person) => person.id === from)?.name ?? "this payer"} to ${trip.people.find((person) => person.id === to)?.name ?? "this recipient"}. Record it anyway?`)) return;
+    ui.settlementDuplicateMessage.textContent = `This looks like a payment already recorded on ${formatDate(createdAt.slice(0, 10))}${duplicateCount}: ${formatMoney(amountCents, currency)} from ${trip.people.find((person) => person.id === from)?.name ?? "this payer"} to ${trip.people.find((person) => person.id === to)?.name ?? "this recipient"}.`;
+    ui.settlementDuplicateWarning.hidden = false;
+    ui.settlementDuplicateConfirm.focus();
+    return;
   }
+  clearSettlementDuplicateWarning();
   settlementSubmissionLocked = true;
   const savedSettlement = {
     id: originalSettlement?.id ?? makeId(),
@@ -1357,7 +1392,21 @@ function setupApp() {
   document.querySelector("#new-trip").addEventListener("click", openNewTripDialog);
   ui.tripForm.addEventListener("submit", createTrip);
   ui.expenseForm.addEventListener("submit", createExpense);
+  ui.expenseForm.addEventListener("input", clearExpenseDuplicateWarning);
+  ui.expenseForm.addEventListener("change", clearExpenseDuplicateWarning);
+  ui.expenseDuplicateCancel.addEventListener("click", clearExpenseDuplicateWarning);
+  ui.expenseDuplicateConfirm.addEventListener("click", () => {
+    expenseDuplicateConfirmed = true;
+    ui.expenseForm.requestSubmit();
+  });
   ui.settlementForm.addEventListener("submit", createSettlement);
+  ui.settlementForm.addEventListener("input", clearSettlementDuplicateWarning);
+  ui.settlementForm.addEventListener("change", clearSettlementDuplicateWarning);
+  ui.settlementDuplicateCancel.addEventListener("click", clearSettlementDuplicateWarning);
+  ui.settlementDuplicateConfirm.addEventListener("click", () => {
+    settlementDuplicateConfirmed = true;
+    ui.settlementForm.requestSubmit();
+  });
   ui.peopleForm.addEventListener("submit", createParticipant);
   ui.connectButton.addEventListener("click", connectGoogleDrive);
   document.addEventListener("click", handleClick);

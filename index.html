@@ -114,6 +114,13 @@
         </label>
         <div id="split-fields" class="split-fields"></div>
         <p id="expense-error" class="form-error" role="alert"></p>
+        <div id="expense-duplicate-warning" class="duplicate-warning" role="alert" hidden>
+          <p id="expense-duplicate-message"></p>
+          <div class="duplicate-warning-actions">
+            <button id="expense-duplicate-cancel" class="button button-quiet" type="button">Go back</button>
+            <button id="expense-duplicate-confirm" class="button button-primary" type="button">Save anyway</button>
+          </div>
+        </div>
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close="expense-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Save expense</button>
@@ -157,6 +164,13 @@
           <label>Currency<select name="currency" required></select></label>
         </div>
         <p id="settlement-error" class="form-error" role="alert"></p>
+        <div id="settlement-duplicate-warning" class="duplicate-warning" role="alert" hidden>
+          <p id="settlement-duplicate-message"></p>
+          <div class="duplicate-warning-actions">
+            <button id="settlement-duplicate-cancel" class="button button-quiet" type="button">Go back</button>
+            <button id="settlement-duplicate-confirm" class="button button-primary" type="button">Record anyway</button>
+          </div>
+        </div>
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close="settlement-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Record payment</button>

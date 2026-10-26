@@ -158,6 +158,10 @@ h1, h2, h3, p { margin-top: 0; }
 .item-fields button { min-height: 36px; border: 0; border-radius: 8px; color: #8e3b2b; background: #f9efed; font-size: 18px; }
 .form-error { min-height: 0; margin: -5px 0 0; color: #9e3527; font-size: 12px; line-height: 1.5; }
 .form-error:empty { display: none; }
+.duplicate-warning { display: grid; gap: 12px; padding: 13px; border: 1px solid #e5c779; border-radius: 11px; color: #624d1e; background: #fff8e5; font-size: 12px; line-height: 1.5; }
+.duplicate-warning[hidden] { display: none; }
+.duplicate-warning p { margin: 0; }
+.duplicate-warning-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .toast { position: fixed; right: 22px; bottom: 22px; z-index: 5; max-width: min(390px, calc(100vw - 44px)); padding: 13px 16px; border-radius: 11px; color: white; background: #243d2f; box-shadow: var(--shadow); font-size: 12px; line-height: 1.5; opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity .2s, transform .2s; }
 .toast.is-visible { opacity: 1; transform: translateY(0); }
 
