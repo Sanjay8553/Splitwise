@@ -1,0 +1,11 @@
+{
+  "name": "Wayfarer — travel expenses",
+  "short_name": "Wayfarer",
+  "description": "A private, simple way to split travel expenses.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f2",
+  "theme_color": "#f5f6f2",
+  "icons": []
+}

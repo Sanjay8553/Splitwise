@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f6f2" />
+    <meta name="description" content="A private, simple way to split travel expenses." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Wayfarer — travel expenses</title>
+    <script src="./config.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Wayfarer home">
+          <span class="brand-mark" aria-hidden="true">w</span>
+          <span>wayfarer</span>
+        </a>
+        <div class="topbar-actions">
+          <span id="sync-status" class="sync-status" role="status">Saved on this device</span>
+          <button id="connect-drive" class="button button-quiet" type="button">Connect Google Drive</button>
+        </div>
+      </header>
+
+      <main id="app" class="layout" aria-live="polite">
+        <aside class="sidebar">
+          <div class="sidebar-heading">
+            <div>
+              <p class="eyebrow">Your space</p>
+              <h1>Trips</h1>
+            </div>
+            <button id="new-trip" class="button button-icon" type="button" aria-label="Create a trip" title="Create a trip">+</button>
+          </div>
+          <nav id="trip-list" class="trip-list" aria-label="Your trips"></nav>
+          <p class="sidebar-note">Private to your Google account.<br />Trips are removed 30 days after they end.</p>
+        </aside>
+
+        <section id="trip-content" class="trip-content"></section>
+      </main>
+    </div>
+
+    <dialog id="trip-dialog" class="dialog">
+      <form id="trip-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Start planning</p>
+            <h2>New trip</h2>
+          </div>
+          <button class="close-button" type="button" data-close="trip-dialog" aria-label="Close">×</button>
+        </div>
+        <label>Trip name<input name="name" required maxlength="80" placeholder="A week in Japan" /></label>
+        <label>Destination<input name="destination" maxlength="80" placeholder="Tokyo, Japan" /></label>
+        <div class="field-row">
+          <label>Start date<input name="startDate" type="date" required /></label>
+          <label>End date<input name="endDate" type="date" required /></label>
+        </div>
+        <label>Trip currency
+          <select name="currency" required>
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="INR">INR — Indian Rupee</option>
+            <option value="JPY">JPY — Japanese Yen</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="AUD">AUD — Australian Dollar</option>
+            <option value="SGD">SGD — Singapore Dollar</option>
+            <option value="CHF">CHF — Swiss Franc</option>
+          </select>
+        </label>
+        <label>People <span class="label-hint">Separate names with commas. You can add more later.</span>
+          <input name="people" required placeholder="You, Alex, Sam" />
+        </label>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close="trip-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Create trip</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="expense-dialog" class="dialog">
+      <form id="expense-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Add to your trip</p>
+            <h2>New expense</h2>
+          </div>
+          <button class="close-button" type="button" data-close="expense-dialog" aria-label="Close">×</button>
+        </div>
+        <label>Description<input name="description" required maxlength="100" placeholder="Dinner by the river" /></label>
+        <div class="field-row">
+          <label>Amount<input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00" /></label>
+          <label>Currency
+            <select name="currency" required>
+              <option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option>
+              <option value="INR">INR</option><option value="JPY">JPY</option><option value="CAD">CAD</option>
+              <option value="AUD">AUD</option><option value="SGD">SGD</option><option value="CHF">CHF</option>
+            </select>
+          </label>
+        </div>
+        <label>Paid by<select name="paidBy" required></select></label>
+        <label>Split method
+          <select name="method" required>
+            <option value="equal">Equal</option>
+            <option value="custom">Custom amounts</option>
+            <option value="weighted">Weighted shares</option>
+            <option value="items">By item</option>
+          </select>
+        </label>
+        <div id="split-fields" class="split-fields"></div>
+        <p id="expense-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close="expense-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Save expense</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settlement-dialog" class="dialog">
+      <form id="settlement-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Close the loop</p>
+            <h2>Record settlement</h2>
+          </div>
+          <button class="close-button" type="button" data-close="settlement-dialog" aria-label="Close">×</button>
+        </div>
+        <label>Paid by<select name="from" required></select></label>
+        <label>Paid to<select name="to" required></select></label>
+        <div class="field-row">
+          <label>Amount<input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00" /></label>
+          <label>Currency<select name="currency" required></select></label>
+        </div>
+        <p id="settlement-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close="settlement-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Record payment</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
