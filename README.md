@@ -17,6 +17,7 @@ A responsive, personal travel-expense website. The app runs in the browser and s
 - Larger, higher-contrast labels and touch controls for easier use on phones
 - Google Drive sync is planned/in progress; it is not available until OAuth setup is completed
 - A local browser copy for offline use
+- Installable website support for adding Wayfarer to a phone or computer home screen
 - Per-trip PDF report with trip details, expenses, splits, balances, suggested payments, and recorded payments
 - Excel-compatible CSV export with expenses, item splits, balances, suggested payments, and recorded payments
 - Expired trips are pruned from browser storage when the app next opens after their retention period
@@ -105,6 +106,15 @@ This repository includes a GitHub Pages workflow. The repository is public, so G
 5. After the workflow completes, open `https://sanjay8553.github.io/Splitwise/` on your laptop or phone.
 
 The app source is public in this repository; trip data is not. Currently, trip data is stored in the browser's local storage for the site origin and browser profile. Google Drive sync is still in progress, so do not rely on it for cross-device access or backup yet. GitHub Pages is subject to GitHub's current terms and usage limits.
+
+### Install on a phone without an app store
+
+After the website is deployed over HTTPS, open its link in the phone's browser:
+
+- **Android (Chrome):** use the browser menu and choose **Install app** or **Add to Home screen**. The browser may show an install prompt when its installability checks are met.
+- **iPhone/iPad (Safari):** tap **Share**, then **Add to Home Screen**. iOS does not always display an automatic install prompt.
+
+The installed PWA opens in a standalone app-style window; it is still the website, not a Play Store or App Store native app. Installing it does not sync data across devices—Google Drive sync remains in progress. Use the deployed HTTPS URL for installation; localhost is intended for development.
 
 ## Data and privacy
 

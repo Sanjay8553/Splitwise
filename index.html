@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f6f2" />
     <meta name="description" content="A private, simple way to split travel expenses." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="./styles.css" />
     <title>Wayfarer — travel expenses</title>
     <script src="./config.js"></script>
@@ -36,7 +38,7 @@
             <button id="new-trip" class="button button-icon" type="button" aria-label="Create a trip" title="Create a trip">+</button>
           </div>
           <nav id="trip-list" class="trip-list" aria-label="Your trips"></nav>
-          <p class="sidebar-note">Private to your Google account.<br />Trips are removed 30 days after they end.</p>
+          <p class="sidebar-note">Saved on this device.<br />Expired trips are removed when the app opens.</p>
         </aside>
 
         <section id="trip-content" class="trip-content"></section>
